@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rowing Performance Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for graphing -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        /* Custom scrollbar for aesthetics */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #9ca3af; /* gray-400 */
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .time-box {
+            font-size: 1.25rem; /* Slightly smaller for compactness */
+            font-weight: 700;
+        }
+        /* Custom styles to invert the chart Y-axis */
+        .chart-container {
+            position: relative;
+            height: 350px; /* Consistent chart height */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
+
+    <div id="app" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-10">
+        
+        <!-- Header -->
+        <header class="mb-8 border-b pb-4">
+            <h1 class="text-3xl font-extrabold text-blue-800">Rowing Performance Dashboard</h1>
+            <p class="text-gray-600 mt-1">Load your training data to view detailed analytics, personal records, and trends.</p>
+        </header>
+
+        <!-- Data Loading and Athlete Selection -->
+        <div class="mb-8 flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
+            
+            <!-- CSV Uploader -->
+            <label class="block">
+                <span class="sr-only">Choose CSV file</span>
+                <input type="file" id="csv-input" accept=".csv, .txt" class="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100"
+                    onchange="handleFileUpload(event)"/>
+            </label>
+            
+            <!-- Athlete Selector -->
+            <label for="athlete-select" class="text-lg font-medium text-gray-700 w-full sm:w-auto mt-4 sm:mt-0">
+                Select Athlete:
+            </label>
+            <select id="athlete-select" 
+                    onchange="displayAthleteData()"
+                    class="mt-1 block w-full sm:w-64 py-2 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base transition duration-150 ease-in-out">
+                <option value="" disabled selected>--- Load data first ---</option>
+            </select>
+        </div>
+
+        <!-- PRs and Key Metrics Display -->
+        <div id="metrics-output" class="mb-8 grid grid-cols-2 md:grid-cols-5 gap-4">
+            <!-- New PR Sections -->
+             <div class="bg-purple-50 p-4 rounded-xl shadow-md border-l-4 border-purple-500 col-span-2 md:col-span-1">
+                <p class="text-xs font-medium text-purple-600">Fastest 500m Split</p>
+                <p id="pr-500m-split" class="time-box text-purple-900 mt-1">---</p>
+                <p id="pr-500m-date" class="text-xs text-purple-500 mt-0.5">---</p>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded-xl shadow-md border-l-4 border-yellow-500 col-span-2 md:col-span-1">
+                <p class="text-xs font-medium text-yellow-600">Fastest 1000m Time</p>
+                <p id="pr-1000m-time" class="time-box text-yellow-900 mt-1">---</p>
+                <p id="pr-1000m-date" class="text-xs text-yellow-500 mt-0.5">---</p>
+            </div>
+             <div class="bg-red-50 p-4 rounded-xl shadow-md border-l-4 border-red-500 col-span-2 md:col-span-1">
+                <p class="text-xs font-medium text-red-600">Fastest 2000m Time</p>
+                <p id="pr-2000m-time" class="time-box text-red-900 mt-1">---</p>
+                <p id="pr-2000m-date" class="text-xs text-red-500 mt-0.5">---</p>
+            </div>
+
+            <!-- Aggregate Metrics and New Percentage Change -->
+            <div class="bg-indigo-50 p-4 rounded-xl shadow-md border-l-4 border-indigo-500">
+                <p class="text-xs font-medium text-indigo-600">Avg. 500m Split</p>
+                <p id="avg-split" class="time-box text-indigo-900 mt-1">---</p>
+            </div>
+             <div id="trend-metric-card" class="bg-gray-200 p-4 rounded-xl shadow-md border-l-4 border-gray-400">
+                <p class="text-xs font-medium text-gray-700">500m Improvement (First to Last)</p>
+                <p id="trend-percent" class="time-box text-gray-900 mt-1">---</p>
+                <p id="trend-time-diff" class="text-xs text-gray-500 mt-0.5">---</p>
+            </div>
+        </div>
+        
+        <!-- Charts Area -->
+        <div id="chart-section" class="mb-8 p-6 bg-gray-50 rounded-xl shadow-inner space-y-8 hidden">
+             <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2">Training Visualizations</h2>
+
+             <!-- Chart 1: Intra-day Session Trend -->
+             <div class="chart-container">
+                 <h3 class="text-lg font-medium text-gray-700 mb-2">Pace Trend Within a Day (500m Pace per Set)</h3>
+                 <canvas id="intraDayChart"></canvas>
+             </div>
+
+             <!-- Chart 2: Daily Improvement -->
+             <div class="chart-container">
+                 <h3 class="text-lg font-medium text-gray-700 mb-2">Daily Average 500m Pace Trend Over Time</h3>
+                 <canvas id="dailyAvgChart"></canvas>
+             </div>
+             
+             <!-- Chart 3: Daily Distance -->
+             <div class="chart-container">
+                 <h3 class="text-lg font-medium text-gray-700 mb-2">Training Volume by Date (Total Distance)</h3>
+                 <canvas id="dailyDistanceChart"></canvas>
+             </div>
+        </div>
+
+
+        <!-- Data Table -->
+        <div id="data-output" class="space-y-4">
+            
+            <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2">All Sessions</h2>
+            <div class="overflow-x-auto rounded-lg shadow-lg border custom-scrollbar">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Session #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Distance (m)</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">500m Split</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Data rows will be populated here -->
+                        <tr><td colspan="5" class="py-4 text-center text-gray-500">Please load a CSV file to begin analysis.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let allData = []; // Global array to hold parsed and processed data
+        let charts = {}; // Object to hold Chart.js instances
+        const DEFAULT_CSV_PATH = 'rowing_log.csv'; // Default file path for server load
+
+        // --- Utility Functions ---
+        
+        /** Generates a robust, normalized key for grouping names (e.g., "Aadarsh Mohanan " -> "aadarsh").
+         * This uses the first word of the name as the key, effectively grouping prefix/abbreviation versions.
+         */
+        function getNameKey(name) {
+            if (!name) return "";
+            // Logic: Use the first word as the Grouping Key (e.g., "Vikrant Kale" -> "vikrant")
+            return name.trim().toLowerCase().split(' ')[0];
+        }
+        
+        /** Converts HH:MM:SS or MM:SS time string to total seconds (float) */
+        function timeToSeconds(timeStr) {
+            if (!timeStr) return 0;
+            const parts = String(timeStr).split(':').map(p => parseFloat(p.trim()));
+            if (parts.some(isNaN)) return 0;
+
+            if (parts.length === 3) {
+                // HH:MM:SS
+                return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            } else if (parts.length === 2) {
+                // MM:SS
+                return parts[0] * 60 + parts[1];
+            }
+            return 0;
+        }
+
+        /** Converts total seconds back to MM:SS format for display */
+        function secondsToTime(totalSeconds) {
+            if (totalSeconds === null || isNaN(totalSeconds) || totalSeconds < 0) return 'N/A';
+            const seconds = Math.floor(totalSeconds);
+            
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            
+            // Show only MM:SS for common rowing splits, or H:MM:SS if over an hour.
+            const timePart = (h > 0 ? `${String(h).padStart(2, '0')}:` : '') +
+                             `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+            return timePart;
+        }
+        
+        /** Converts total seconds back to MM:SS.ms format including hundredths */
+        function secondsToTimePrecise(totalSeconds) {
+            if (totalSeconds === null || isNaN(totalSeconds) || totalSeconds < 0) return 'N/A';
+            // Round to 2 decimal places to get hundredths
+            const roundedSeconds = Math.round(totalSeconds * 100) / 100;
+            const integerSeconds = Math.floor(roundedSeconds);
+            const fractionalSeconds = Math.round((roundedSeconds - integerSeconds) * 100);
+
+            const m = Math.floor(integerSeconds / 60);
+            const sec = integerSeconds % 60;
+            
+            return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(fractionalSeconds).padStart(2, '0')}`;
+        }
+
+        /** Chart callback to format seconds back to MM:SS for the Y-axis */
+        function formatChartTime(totalSeconds) {
+            if (totalSeconds === null || isNaN(totalSeconds) || totalSeconds < 0) return '';
+            const seconds = Math.round(totalSeconds);
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+        
+        // --- 1. Data Preprocessing (Includes Session Numbering and Normalization) ---
+
+        function parseData(csv) {
+            const lines = csv.trim().split('\n');
+            if (lines.length < 2) return [];
+
+            // Attempt to determine the separator
+            const firstLine = lines[0];
+            let separator = '\t';
+            if (firstLine.includes(',')) {
+                separator = ',';
+            } else if (firstLine.includes(';')) {
+                separator = ';';
+            }
+            
+            const headers = lines[0].split(separator).map(h => h.trim());
+            let data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(separator).map(v => v.trim());
+                if (values.length !== headers.length || values.every(v => v === '')) continue;
+
+                const session = {};
+                headers.forEach((header, index) => {
+                    session[header.replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, '')] = values[index];
+                });
+
+                // Crucial Data Processing
+                session.Name = session.Name.trim() || 'Unknown Athlete';
+                // Name_Key now stores the first word for robust grouping
+                session.Name_Key = getNameKey(session.Name); 
+                session.Distance = parseInt(session.Distance || '0', 10);
+                session.Total_Time_Sec = timeToSeconds(session.Time);
+                session.Split_Time_Sec = timeToSeconds(session.Time_in_500m);
+                session.Date_Object = new Date(session.Date);
+                session.Date_String = session.Date_Object.toISOString().split('T')[0];
+                
+                // Exclude bad data
+                if (session.Distance <= 0 || session.Total_Time_Sec <= 0 || isNaN(session.Date_Object.getTime())) continue; 
+
+                data.push(session);
+            }
+            
+            // Add Session Number (order of set within a day)
+            // Assumes CSV data is already ordered chronologically
+            let currentDay = null;
+            let sessionCounter = 0;
+            data.forEach(session => {
+                if (session.Date_String !== currentDay) {
+                    currentDay = session.Date_String;
+                    sessionCounter = 1;
+                }
+                session.Session_Number = sessionCounter++;
+            });
+
+            return data;
+        }
+
+        // --- 4. Chart Rendering and Data Aggregation ---
+
+        /** Destroys existing charts to prevent memory leaks */
+        function destroyCharts() {
+            Object.keys(charts).forEach(key => {
+                if (charts[key]) {
+                    charts[key].destroy();
+                    charts[key] = null;
+                }
+            });
+        }
+        
+        /** Creates the Intra-day Chart (Session Pace Trend by Date) */
+        function renderIntraDayChart(data) {
+            const dateGroups = data.reduce((acc, curr) => {
+                const date = curr.Date_String;
+                if (!acc[date]) {
+                    acc[date] = [];
+                }
+                acc[date].push(curr);
+                return acc;
+            }, {});
+
+            const datasets = Object.keys(dateGroups).map((date, index) => {
+                const sets = dateGroups[date].sort((a, b) => a.Session_Number - b.Session_Number);
+                
+                // Generate a unique color for the date
+                const hue = (index * 137.5) % 360; // Use a Golden Angle approximation for diverse colors
+                const color = `hsl(${hue}, 70%, 50%)`;
+
+                return {
+                    label: date,
+                    data: sets.map(s => s.Split_Time_Sec),
+                    borderColor: color,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 4,
+                    // Use Session Number as the x-axis label
+                    labels: sets.map(s => `Set ${s.Session_Number}`)
+                };
+            });
+
+            const maxSessionNumber = data.reduce((max, s) => Math.max(max, s.Session_Number), 0);
+            const labels = Array.from({ length: maxSessionNumber }, (_, i) => `Set ${i + 1}`);
+
+            charts.intraDayChart = new Chart(document.getElementById('intraDayChart'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: { display: true, text: '500m Pace (MM:SS)' },
+                            reverse: true, // Faster times (lower seconds) appear higher
+                            ticks: { callback: (value) => formatChartTime(value) }
+                        },
+                        x: { title: { display: true, text: 'Session Number' },
+                             // Use the generated Session Number labels for X-axis ticks
+                            ticks: { autoSkip: false, maxRotation: 0, minRotation: 0 }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${formatChartTime(context.raw)}`,
+                                title: (context) => context[0].dataset.labels[context[0].dataIndex]
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        /** Creates the Daily Improvement Chart (Avg 500m Pace Over Time) */
+        function renderDailyAvgChart(data) {
+            const dailyAverages = Object.values(data.reduce((acc, s) => {
+                const date = s.Date_String;
+                if (!acc[date]) {
+                    acc[date] = { totalTime: 0, totalSegments: 0, date: s.Date_Object };
+                }
+                acc[date].totalTime += s.Total_Time_Sec;
+                acc[date].totalSegments += s.Distance / 500;
+                return acc;
+            }, {})).sort((a, b) => a.date - b.date);
+
+            const labels = dailyAverages.map(d => d.date.toLocaleDateString('en-US'));
+            const values = dailyAverages.map(d => d.totalTime / d.totalSegments);
+
+            charts.dailyAvgChart = new Chart(document.getElementById('dailyAvgChart'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Average 500m Pace',
+                        data: values,
+                        borderColor: '#10B981', // Emerald green
+                        tension: 0.3,
+                        pointRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: { display: true, text: 'Pace (MM:SS)' },
+                            reverse: true, // Faster times (lower seconds) appear higher
+                            ticks: { callback: (value) => formatChartTime(value) }
+                        }
+                    },
+                    plugins: {
+                         tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${formatChartTime(context.raw)}` } }
+                    }
+                }
+            });
+        }
+        
+        /** Creates the Daily Distance Bar Chart (Total Volume) */
+        function renderDailyDistanceChart(data) {
+            const dailyDistances = Object.values(data.reduce((acc, s) => {
+                const date = s.Date_String;
+                if (!acc[date]) {
+                    acc[date] = { totalDistance: 0, date: s.Date_Object };
+                }
+                acc[date].totalDistance += s.Distance;
+                return acc;
+            }, {})).sort((a, b) => a.date - b.date);
+
+            const labels = dailyDistances.map(d => d.date.toLocaleDateString('en-US'));
+            const values = dailyDistances.map(d => d.totalDistance);
+
+            charts.dailyDistanceChart = new Chart(document.getElementById('dailyDistanceChart'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Total Distance Rowed (m)',
+                        data: values,
+                        backgroundColor: '#6366F1', // Indigo
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Distance (meters)' },
+                            ticks: { callback: (value) => value.toLocaleString() }
+                        },
+                        x: {
+                            title: { display: true, text: 'Date' }
+                        }
+                    },
+                     plugins: {
+                        tooltip: {
+                             callbacks: {
+                                 label: (context) => `${context.dataset.label}: ${context.raw.toLocaleString()}m`
+                             }
+                        }
+                     }
+                }
+            });
+        }
+
+        // --- 5. UI and Control Logic ---
+        
+        /** Shared logic to process and display data after successful load/upload */
+        function processAndDisplayData(csvContent) {
+            allData = parseData(csvContent);
+            populateAthleteDropdown();
+            
+            // Automatically select the first athlete if data is available
+            const select = document.getElementById('athlete-select');
+            if (allData.length > 0) {
+                const firstAthleteKey = allData[0].Name_Key;
+                
+                // Find the canonical name associated with this key (the longest name in the group)
+                const canonicalName = Array.from(document.getElementById('athlete-select').options)
+                    .find(option => getNameKey(option.value) === firstAthleteKey)?.value;
+
+                if (canonicalName) {
+                    select.value = canonicalName;
+                }
+            }
+            displayAthleteData();
+        }
+
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) { return; }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                processAndDisplayData(e.target.result);
+            };
+            reader.readAsText(file);
+        }
+
+        /** NEW: Attempts to load the default CSV file from the server */
+        function loadDefaultData() {
+            fetch(DEFAULT_CSV_PATH)
+                .then(response => {
+                    if (!response.ok) {
+                        // If file not found (404) or other HTTP error
+                        throw new Error(`Failed to load default file: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
+                .then(csvContent => {
+                    console.log(`Successfully loaded default data from ${DEFAULT_CSV_PATH}`);
+                    processAndDisplayData(csvContent);
+                })
+                .catch(error => {
+                    // This is expected if the user hasn't uploaded the default file yet
+                    console.warn(`[INFO] Could not load default data. Ready for manual upload.`, error.message);
+                });
+        }
+
+        function populateAthleteDropdown() {
+            const select = document.getElementById('athlete-select');
+            select.innerHTML = '<option value="" disabled selected>--- Choose Athlete ---</option>';
+
+            if (allData.length > 0) {
+                // Map: Group Key (first name) -> { Original Name (longest) }
+                const canonicalNameMap = new Map(); 
+                
+                allData.forEach(item => {
+                    const key = item.Name_Key; // e.g., 'vikrant'
+                    const currentName = item.Name.trim();
+
+                    if (!canonicalNameMap.has(key)) {
+                        // Initialize with the current name
+                        canonicalNameMap.set(key, currentName);
+                    } else {
+                        // Check if the current name is longer than the stored canonical name
+                        const storedName = canonicalNameMap.get(key);
+                        if (currentName.length > storedName.length) {
+                             canonicalNameMap.set(key, currentName);
+                        }
+                    }
+                });
+
+                // The dropdown values should be the Canonical Names (e.g., "Vikrant Kale")
+                const uniqueNames = Array.from(canonicalNameMap.values()).sort();
+                
+                uniqueNames.forEach(name => {
+                    if (name) {
+                         const option = document.createElement('option');
+                         option.value = name; 
+                         option.textContent = name;
+                         select.appendChild(option);
+                    }
+                });
+            }
+        }
+        
+        function displayAthleteData() {
+            const select = document.getElementById('athlete-select');
+            const selectedName = select.value;
+            
+            // Use the new getNameKey (first word) for robust filtering across all name variations
+            const selectedNameKey = getNameKey(selectedName); // e.g., "Vikrant Kale" -> "vikrant"
+            
+            // Filter all data points that share the same first word key
+            const athleteData = allData.filter(item => item.Name_Key === selectedNameKey);
+
+            // --- Safely Reset UI Elements ---
+            const tableBody = document.getElementById('data-table-body');
+            if (tableBody) tableBody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-gray-500">Select an athlete to see their sessions.</td></tr>';
+
+            // Define all IDs that need text reset
+            const elementsToReset = [
+                'total-distance', 'avg-split', 'pr-500m-split', 'pr-1000m-time', 'pr-2000m-time',
+                'pr-500m-date', 'pr-1000m-date', 'pr-2000m-date', 'trend-percent', 'trend-time-diff'
+            ];
+            elementsToReset.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '---';
+            });
+            
+            // Get trend elements for further manipulation (must exist if we proceed)
+            const totalDistanceEl = document.getElementById('total-distance');
+            const trendPercentElement = document.getElementById('trend-percent');
+            const trendTimeDiffElement = document.getElementById('trend-time-diff');
+            const trendCardElement = document.getElementById('trend-metric-card');
+            
+            if (trendCardElement) trendCardElement.className = "bg-gray-200 p-4 rounded-xl shadow-md border-l-4 border-gray-400";
+
+
+            destroyCharts();
+            document.getElementById('chart-section').classList.add('hidden');
+            
+            if (athleteData.length === 0) { return; }
+            
+            // --- C. Calculate PRs and Metrics ---
+            
+            let totalDistance = 0;
+            let totalDuration = 0;
+            let prs = {
+                '500_split': { time: Infinity, date: 'N/A' },
+                '1000_time': { time: Infinity, date: 'N/A' },
+                '2000_time': { time: Infinity, date: 'N/A' }
+            };
+            
+            // Filter sessions for analysis
+            const analyzableSessions = athleteData.filter(s => s.Distance > 0 && s.Total_Time_Sec > 0);
+            
+            if (tableBody) tableBody.innerHTML = ''; // Clear the initial "Select athlete" message
+
+            analyzableSessions.forEach(session => {
+                // Aggregation
+                totalDistance += session.Distance;
+                totalDuration += session.Total_Time_Sec;
+
+                // PR checks (Split 500m)
+                if (session.Split_Time_Sec > 0 && session.Split_Time_Sec < prs['500_split'].time) {
+                    prs['500_split'] = { time: session.Split_Time_Sec, date: session.Date_Object };
+                }
+                
+                // PR checks (Total Time 1000m)
+                if (session.Distance === 1000 && session.Total_Time_Sec < prs['1000_time'].time) {
+                    prs['1000_time'] = { time: session.Total_Time_Sec, date: session.Date_Object };
+                }
+                
+                // PR checks (Total Time 2000m)
+                if (session.Distance === 2000 && session.Total_Time_Sec < prs['2000_time'].time) {
+                    prs['2000_time'] = { time: session.Total_Time_Sec, date: session.Date_Object };
+                }
+
+                // Table Population
+                const row = tableBody.insertRow();
+                row.className = 'hover:bg-gray-100 transition duration-100';
+                const dateDisplay = session.Date_Object.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+                row.insertCell().textContent = dateDisplay;
+                row.insertCell().textContent = session.Session_Number;
+                row.insertCell().textContent = session.Distance.toLocaleString();
+                row.insertCell().textContent = secondsToTime(session.Total_Time_Sec);
+                row.insertCell().textContent = secondsToTime(session.Split_Time_Sec);
+            });
+
+            // Calculate overall average split
+            const totalSegments = totalDistance / 500;
+            let avgSplitSec = (totalSegments > 0) ? totalDuration / totalSegments : 0;
+            
+            // Calculate Performance Trend (First vs Last 500m Piece)
+            const sorted500mSessions = analyzableSessions
+                .filter(s => s.Distance === 500)
+                .sort((a, b) => a.Date_Object - b.Date_Object);
+
+            
+            if (sorted500mSessions.length >= 2) {
+                const firstSplit = sorted500mSessions[0].Split_Time_Sec;
+                const lastSplit = sorted500mSessions[sorted500mSessions.length - 1].Split_Time_Sec;
+                const timeDifference = firstSplit - lastSplit; // Positive = faster later (improvement)
+                
+                // Calculate percentage change: ((New Value - Old Value) / Old Value) * 100
+                // % Change = ((Last Split - First Split) / First Split) * 100
+                const percentChange = ((lastSplit - firstSplit) / firstSplit) * 100;
+
+                let trendClass;
+                let percentText;
+                let diffText = `Diff: ${secondsToTimePrecise(Math.abs(timeDifference))}`;
+
+                if (percentChange < -0.5) { // Faster (Improvement)
+                    trendClass = 'bg-green-100 border-green-500';
+                    percentText = `${Math.abs(percentChange).toFixed(2)}% Faster`;
+                } else if (percentChange > 0.5) { // Slower (Decline)
+                    trendClass = 'bg-red-100 border-red-500';
+                    percentText = `${Math.abs(percentChange).toFixed(2)}% Slower`;
+                } else { // Stable
+                    trendClass = 'bg-yellow-100 border-yellow-500';
+                    percentText = 'Stable (< 0.5%)';
+                    diffText = `Range: ${secondsToTimePrecise(Math.abs(timeDifference))}`;
+                }
+
+                // Update new trend metric card (Safely)
+                if (trendPercentElement) trendPercentElement.textContent = percentText;
+                if (trendTimeDiffElement) trendTimeDiffElement.textContent = diffText;
+                if (trendCardElement) trendCardElement.className = `p-4 rounded-xl shadow-md border-l-4 ${trendClass}`;
+
+            } else {
+                // Not enough data for trend analysis
+                if (trendPercentElement) trendPercentElement.textContent = 'N/A';
+                if (trendTimeDiffElement) trendTimeDiffElement.textContent = sorted500mSessions.length > 0 ? 'Need 2+ sessions' : 'No 500m data';
+                if (trendCardElement) trendCardElement.className = "bg-gray-200 p-4 rounded-xl shadow-md border-l-4 border-gray-400";
+            }
+
+
+            // --- D. Update UI ---
+            // Note: total-distance ID is not in the HTML, removed reliance on it here
+            
+            const avgSplitEl = document.getElementById('avg-split');
+            if (avgSplitEl) avgSplitEl.textContent = secondsToTime(avgSplitSec);
+            
+            // PR Updates (relying on initial safe reset)
+            const pr500mSplitEl = document.getElementById('pr-500m-split');
+            if (pr500mSplitEl) pr500mSplitEl.textContent = secondsToTime(prs['500_split'].time);
+            const pr500mDateEl = document.getElementById('pr-500m-date');
+            if (pr500mDateEl) pr500mDateEl.textContent = prs['500_split'].time !== Infinity ? prs['500_split'].date.toLocaleDateString() : 'N/A';
+            
+            const pr1000mTimeEl = document.getElementById('pr-1000m-time');
+            if (pr1000mTimeEl) pr1000mTimeEl.textContent = secondsToTime(prs['1000_time'].time);
+            const pr1000mDateEl = document.getElementById('pr-1000m-date');
+            if (pr1000mDateEl) pr1000mDateEl.textContent = prs['1000_time'].time !== Infinity ? prs['1000_time'].date.toLocaleDateString() : 'N/A';
+            
+            const pr2000mTimeEl = document.getElementById('pr-2000m-time');
+            if (pr2000mTimeEl) pr2000mTimeEl.textContent = secondsToTime(prs['2000_time'].time);
+            const pr2000mDateEl = document.getElementById('pr-2000m-date');
+            if (pr2000mDateEl) pr2000mDateEl.textContent = prs['2000_time'].time !== Infinity ? prs['2000_time'].date.toLocaleDateString() : 'N/A';
+            
+
+            // --- E. Render Charts ---
+            document.getElementById('chart-section').classList.remove('hidden');
+            renderIntraDayChart(analyzableSessions.filter(s => s.Distance === 500)); // Only 500m pieces for intra-day analysis
+            renderDailyAvgChart(analyzableSessions);
+            renderDailyDistanceChart(analyzableSessions);
+        }
+
+        // Initialize the app by attempting to load the default file
+        loadDefaultData();
+    </script>
+</body>
+</html>
